@@ -39,6 +39,7 @@ Simple examples
 Simple code to run every second:
 
 .. code-block:: python
+
     import mcron
     from mcron.decorators import successfully_run_times
 
