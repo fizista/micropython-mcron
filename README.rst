@@ -10,8 +10,8 @@ MicroCRON for MicroPython
 
 MicroCRON is a time-based task scheduling program.
 
-The library was designed after the experience with its larger predecessor SimpleCRON. The current library focuses
-on minimalism of code while keeping maximum functionality. It takes 3 times less memory than SimpleCRON.
+The library was designed after the experience with its larger predecessor SimpleCRON_. The current library focuses
+on minimalism of code while keeping maximum functionality. It takes 3 times less memory than SimpleCRON_.
 It needs about 3kB of memory to work.
 
 The software was tested under micropython 1.12 (esp32, esp8266).
@@ -186,3 +186,4 @@ If you need a different license for this library (e.g. commercial),
 please contact me: fizista+mcron@gmail.com.
 
 
+.. _SimpleCRON: https://github.com/fizista/micropython-scron
