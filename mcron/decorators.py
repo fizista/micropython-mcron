@@ -1,5 +1,7 @@
 import mcron
 
+RUN_TIMES_MEM_ID = const(2)
+
 
 def run_times(times):
     """
@@ -8,22 +10,21 @@ def run_times(times):
     :param times: number of start-ups
     :return:
     """
-    RUN_TIMES_ID = '__run_times'
 
     def decorator(callback):
         def wrapper(callback_id, current_time, callback_memory):
-            if RUN_TIMES_ID in callback_memory:
-                callback_memory[RUN_TIMES_ID] += 1
-            else:
-                callback_memory[RUN_TIMES_ID] = 1
+            callback_memory[RUN_TIMES_MEM_ID] = callback_memory.setdefault(RUN_TIMES_MEM_ID, 0) + 1
             out = callback(callback_id, current_time, callback_memory)
-            if callback_memory[RUN_TIMES_ID] >= times:
+            if callback_memory[RUN_TIMES_MEM_ID] >= times:
                 mcron.remove(callback_id)
             return out
 
         return wrapper
 
     return decorator
+
+
+SUCCESSFULLY_RUN_TIMES_MEM_ID = const(3)
 
 
 def successfully_run_times(times):
@@ -35,20 +36,14 @@ def successfully_run_times(times):
     :param times: number of start-ups
     :return:
     """
-    RUN_TIMES_ID = '__s_run_times'
+    MEM_ID = '__srt'
 
     def decorator(callback):
         def wrapper(callback_id, current_time, callback_memory):
             out = callback(callback_id, current_time, callback_memory)
-
-            if RUN_TIMES_ID not in callback_memory and out == True:
-                callback_memory[RUN_TIMES_ID] = 1
-            elif RUN_TIMES_ID in callback_memory and out == True:
-                callback_memory[RUN_TIMES_ID] += 1
-            elif RUN_TIMES_ID not in callback_memory:
-                callback_memory[RUN_TIMES_ID] = 0
-
-            if callback_memory[RUN_TIMES_ID] >= times:
+            callback_memory[SUCCESSFULLY_RUN_TIMES_MEM_ID] = \
+                callback_memory.setdefault(SUCCESSFULLY_RUN_TIMES_MEM_ID, 0) + int(bool(out))
+            if callback_memory[SUCCESSFULLY_RUN_TIMES_MEM_ID] >= times:
                 mcron.remove(callback_id)
             return out
 
@@ -57,7 +52,10 @@ def successfully_run_times(times):
     return decorator
 
 
-class call_counter:
+CALL_COUNTER_MEM_ID = const(4)
+
+
+def call_counter(callback):
     """
     Decorator counts the number of callback calls.
 
@@ -66,17 +64,12 @@ class call_counter:
     :param callback:
     :return:
     """
-    ID = '__call_counter'
 
-    def __init__(self, callback):
-        self.callback = callback
+    def decorator(callback_id, current_time, callback_memory):
+        callback_memory[CALL_COUNTER_MEM_ID] = callback_memory.setdefault(CALL_COUNTER_MEM_ID, 0) + 1
+        return callback(callback_id, current_time, callback_memory)
 
-    def __call__(self, callback_id, current_time, callback_memory):
-        if self.ID in callback_memory:
-            callback_memory[self.ID] += 1
-        else:
-            callback_memory[self.ID] = 1
-        return self.callback(callback_id, current_time, callback_memory)
+    return decorator
 
 
 def debug_call(callback):
@@ -92,7 +85,7 @@ def debug_call(callback):
         import utime
         print(
             'START call(%3d): %25s,   pointer%18s' % (
-                callback_memory[call_counter.ID],
+                callback_memory[CALL_COUNTER_MEM_ID],
                 callback_id,
                 str(utime.localtime(current_time))
             )
@@ -104,7 +97,7 @@ def debug_call(callback):
         print('    Memory after  call: %s' % mem_after)
         print(
             'END   call(%3d): %25s,   pointer%18s' % (
-                callback_memory[call_counter.ID],
+                callback_memory[CALL_COUNTER_MEM_ID],
                 callback_id,
                 str(utime.localtime(current_time))
             )

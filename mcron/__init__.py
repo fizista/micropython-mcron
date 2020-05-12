@@ -1,13 +1,13 @@
 import utime
 import machine
 
-PERIOD_CENTURY = 100 * 365 * 24 * 60 * 60
-PERIOD_YEAR = 365 * 24 * 60 * 60
-PERIOD_MONTH = int(PERIOD_YEAR / 12)
-PERIOD_WEEK = 7 * 24 * 60 * 60
-PERIOD_DAY = 24 * 60 * 60
-PERIOD_HOUR = 60 * 60
-PERIOD_MINUTE = 60
+PERIOD_CENTURY = const(100 * 365 * 24 * 60 * 60)  # Warning: average value
+PERIOD_YEAR = const(365 * 24 * 60 * 60)  # Warning: average value
+PERIOD_MONTH = const((365 * 24 * 60 * 60) // 12)  # Warning: average value
+PERIOD_WEEK = const(7 * 24 * 60 * 60)
+PERIOD_DAY = const(24 * 60 * 60)
+PERIOD_HOUR = const(60 * 60)
+PERIOD_MINUTE = const(60)
 
 # {
 #   <period: int>: {
@@ -36,17 +36,27 @@ callback_exception_processors = [lambda e: print('Callback EXCEPTION: %s' % e)]
 STEP_TYPE_RANGE = const(1)
 STEP_TYPE_SET = const(2)
 
+_last_run_time = None
+_timer_period = None  # You have to turn the timer on by: init_timer
+_max_time_task_calls = None  # You have to turn the timer on by: init_timer
 
-def insert(period, period_steps, callback_id, callback):
+
+class TLPTimeException(Exception):
+    """
+    Too long processing time.
+    The maximum time is: 1000 [ms] - 1.5 * period [ms]
+    """
+    pass
+
+
+def insert(period, period_steps, callback_id, callback, period_offset=0, from_now=False):
     """
 
     Examples:
         * Starting once after XX seconds.
-        mcron.insert(<seconds_from_now> + 1, {<seconds_from_now>}, 'callback-id', successfully_run_times(1)(<callback>))
+            insert(<seconds_from_now>+1, {<seconds_from_now>}, 'callback-id', run_times(1)(<callback>), from_now=True)
         * Running twice a day at 23:59 and 6:00 a.m.
-        mcron.insert(mcron.PERIOD_DAY, {23 * 59 * 59, 6 * 60 * 60}, 'callback-id', <callback>)
-        * Once every 15 seconds
-        mcron.insert(mcron.PERIOD_MINUTE, range(0, mcron.PERIOD_MINUTE, 15), 'callback-id', <callback>)
+            insert(mcron.PERIOD_DAY, {23 * 59 * 59, 6 * 60 * 60}, 'callback-id', <callback>)
 
     :param period: A period of time during which the steps are repeated.
     :type  period: int
@@ -56,15 +66,24 @@ def insert(period, period_steps, callback_id, callback):
     :type callback_id: str
     :param callback: callable(callback_id, current_time, callback_memory)
     :type callback: callable
+    :param period_offset: The beginning of the period is shifted by the set value.
+    :type period_offset: int
+    :param from_now: The period will start when the task is added.
     :return:
     """
-    global timer_table, callback_table
+    global timer_table, memory_table, callback_table, callback_exception_processors
 
     if callback_id in callback_table:
         raise Exception('Callback ID - exists')
 
     if type(period) is not int:
         raise TypeError('period is not int')
+
+    if from_now:
+        period_offset = -1 * utime.time() % period
+
+    if type(period_offset) is not int:
+        raise TypeError('period_offset is not int')
 
     if type(period_steps).__name__ == 'range':
         period_steps = (STEP_TYPE_RANGE,) + (period_steps.start, period_steps.stop, period_steps.step)
@@ -79,11 +98,12 @@ def insert(period, period_steps, callback_id, callback):
 
     callback_table[callback_id] = callback
 
-    if period in timer_table:
-        period_data = timer_table[period]
+    period_info = (period, period_offset)
+    if period_info in timer_table:
+        period_data = timer_table[period_info]
     else:
         period_data = {}
-        timer_table[period] = period_data
+        timer_table[period_info] = period_data
 
     if period_steps in period_data:
         callback_ids = period_data[period_steps]
@@ -94,32 +114,37 @@ def insert(period, period_steps, callback_id, callback):
 
 
 def remove(callback_id):
-    for period, period_data in timer_table.items():
+    global timer_table, memory_table, callback_table
+    for period_info, period_data in timer_table.items():
         for period_steps, callback_ids in period_data.items():
             if callback_id in callback_ids:
                 callback_ids.remove(callback_id)
+            if callback_id in memory_table:
+                memory_table.pop(callback_id)
             if len(callback_ids) <= 0:
                 period_data.pop(period_steps)
         if not period_data:
-            timer_table.pop(period)
+            timer_table.pop(period_info)
     if callback_id in callback_table:
         callback_table.pop(callback_id)
 
 
-def run_actions(*args, **kwargs):
+def remove_all():
+    global callback_table
+    for cid in callback_table.keys():
+        remove(cid)
+
+
+def run_actions(current_time):
     global timer_table, memory_table, callback_table, callback_exception_processors
-    current_time = utime.time()
-    for period, period_data in timer_table.items():
-        period_pointer = current_time % period
+    for period_info, period_data in timer_table.items():
+        period, period_offset = period_info
+        period_pointer = (current_time + period_offset) % period
         for period_steps, callback_ids in period_data.items():
             if STEP_TYPE_SET == period_steps[0] and period_pointer in period_steps[1:] or \
                     STEP_TYPE_RANGE == period_steps[0] and period_pointer in range(*period_steps[1:]):
                 for callback_id in callback_ids:
-                    if callback_id in memory_table:
-                        callback_memory = memory_table[callback_id]
-                    else:
-                        callback_memory = {}
-                        memory_table[callback_id] = callback_memory
+                    callback_memory = memory_table.setdefault(callback_id, {})
                     action_callback = callback_table[callback_id]
 
                     try:
@@ -129,30 +154,35 @@ def run_actions(*args, **kwargs):
                             processor(e)
 
 
-def init_timer(timer_id=3):
-    global timer
+def run_actions_callback(*args, **kwargs):
+    global timer_table, memory_table, callback_table, callback_exception_processors, _last_run_time, _timer_period, _max_time_task_calls
+
+    current_time = utime.time()
+    if current_time == _last_run_time:
+        return
+    _last_run_time = current_time
+    start = utime.ticks_ms()
+
+    run_actions(current_time)
+
+    stop = utime.ticks_ms()
+    time_task_calls = utime.ticks_diff(stop, start)
+    if time_task_calls > _max_time_task_calls:
+        e = TLPTimeException(current_time, time_task_calls)
+        for processor in callback_exception_processors:
+            processor(e)
+
+
+def init_timer(timer_id=3, timer_period=250):
+    """
+
+    :param timer_id:
+    :param timer_period: Number of milliseconds between run_actions calls. The recommended value is 250ms. For values greater than 1000ms some action calls may be omitted.
+    :type timer_period: int
+    :return:
+    """
+    global timer, _timer_period, _max_time_task_calls, timer
+    _timer_period = timer_period
+    _max_time_task_calls = 1000 - 1.5 * _timer_period
     timer = machine.Timer(timer_id)
-    timer.init(period=1000, mode=machine.Timer.PERIODIC, callback=run_actions)
-
-
-# def dd(*a, **k):
-#     print(a, k)
-#
-#
-# def ddodd(*a, **k):
-#     print(a, k)
-#     return bool(a[1] % 2)
-#
-#
-# def test_a():
-#     insert(PERIOD_MINUTE, range(0, PERIOD_MINUTE, 15), 'min_15s', dd)
-#     insert(PERIOD_HOUR, range(0, PERIOD_HOUR, 60), 'h_1m', dd)
-#
-#
-# def test_b():
-#     from mcron import decorators
-#     insert(PERIOD_MINUTE, range(0, PERIOD_MINUTE, 5), 'd_run_times', decorators.run_times(3)(dd))
-#     insert(PERIOD_MINUTE, range(0, PERIOD_MINUTE, 5), 'd_successfully_run_times', decorators.successfully_run_times(3)(ddodd))
-#     insert(PERIOD_MINUTE, range(0, PERIOD_MINUTE, 5), 'd_call_counter', decorators.call_counter(dd))
-#
-# mcron.init_timer()
+    timer.init(period=_timer_period, mode=machine.Timer.PERIODIC, callback=run_actions_callback)
