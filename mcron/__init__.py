@@ -135,7 +135,7 @@ def remove_all():
         remove(cid)
 
 
-def run_actions(current_time):
+def get_actions(current_time):
     global timer_table, memory_table, callback_table, callback_exception_processors
     for period_info, period_data in timer_table.items():
         period, period_offset = period_info
@@ -144,14 +144,20 @@ def run_actions(current_time):
             if STEP_TYPE_SET == period_steps[0] and period_pointer in period_steps[1:] or \
                     STEP_TYPE_RANGE == period_steps[0] and period_pointer in range(*period_steps[1:]):
                 for callback_id in callback_ids:
-                    callback_memory = memory_table.setdefault(callback_id, {})
-                    action_callback = callback_table[callback_id]
+                    yield callback_id
 
-                    try:
-                        action_callback(callback_id, current_time, callback_memory)
-                    except Exception as e:
-                        for processor in callback_exception_processors:
-                            processor(e)
+
+def run_actions(current_time):
+    global timer_table, memory_table, callback_table, callback_exception_processors
+    for callback_id in get_actions(current_time):
+        callback_memory = memory_table.setdefault(callback_id, {})
+        action_callback = callback_table[callback_id]
+
+        try:
+            action_callback(callback_id, current_time, callback_memory)
+        except Exception as e:
+            for processor in callback_exception_processors:
+                processor(e)
 
 
 def run_actions_callback(*args, **kwargs):
@@ -168,7 +174,7 @@ def run_actions_callback(*args, **kwargs):
     stop = utime.ticks_ms()
     time_task_calls = utime.ticks_diff(stop, start)
     if time_task_calls > _max_time_task_calls:
-        e = TLPTimeException(current_time, time_task_calls)
+        e = TLPTimeException(current_time, time_task_calls, ' '.join(get_actions(current_time)))
         for processor in callback_exception_processors:
             processor(e)
 
