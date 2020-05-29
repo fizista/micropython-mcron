@@ -172,9 +172,9 @@ def run_actions_callback(*args, **kwargs):
     run_actions(current_time)
 
     stop = utime.ticks_ms()
-    time_task_calls = utime.ticks_diff(stop, start)
-    if time_task_calls > _max_time_task_calls:
-        e = TLPTimeException(current_time, time_task_calls, ' '.join(get_actions(current_time)))
+    processing_time = utime.ticks_diff(stop, start)
+    if processing_time > _max_time_task_calls:
+        e = TLPTimeException(current_time, processing_time, ' '.join(get_actions(current_time)))
         for processor in callback_exception_processors:
             processor(e)
 
