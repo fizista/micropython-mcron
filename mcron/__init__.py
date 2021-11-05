@@ -116,13 +116,17 @@ def insert(period, period_steps, callback_id, callback, period_offset=0, from_no
 def remove(callback_id):
     global timer_table, memory_table, callback_table
     for period_info, period_data in timer_table.items():
+        to_del_ps = []
         for period_steps, callback_ids in period_data.items():
             if callback_id in callback_ids:
                 callback_ids.remove(callback_id)
             if callback_id in memory_table:
                 memory_table.pop(callback_id)
             if len(callback_ids) <= 0:
-                period_data.pop(period_steps)
+                to_del_ps.append(period_steps)
+        for period_steps in to_del_ps:
+            period_data.pop(period_steps)
+        del to_del_ps
         if not period_data:
             timer_table.pop(period_info)
     if callback_id in callback_table:
