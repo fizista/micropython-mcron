@@ -146,9 +146,8 @@ def get_actions(current_time):
         period_pointer = (current_time + period_offset) % period
         for period_steps, callback_ids in period_data.items():
             if STEP_TYPE_SET == period_steps[0] and period_pointer in period_steps[1:] or \
-                    STEP_TYPE_RANGE == period_steps[0] and period_pointer in range(*period_steps[1:]):
-                for callback_id in callback_ids:
-                    yield callback_id
+                                STEP_TYPE_RANGE == period_steps[0] and period_pointer in range(*period_steps[1:]):
+                yield from callback_ids
 
 
 def run_actions(current_time):
