@@ -55,6 +55,13 @@ def mini_debug_call(f):
     return deco
 
 
+def test_remove()
+    mcron.insert(mcron.PERIOD_DAY, {0}, "test_remove", mini_debug)
+    mcron.remove("test_remove")
+    if mcron.callback_table.get("test_remove") is not None:
+        raise Exception("The callback function was not removed")
+
+
 mcron.init_timer()
 mcron.timer.deinit()
 
@@ -165,4 +172,9 @@ test_time(2020, 12, 24, 6, 6, 9 + 11, True)
 test_time(2020, 12, 24, 6, 6, 9 + 11 * 2, True)
 test_time(2020, 12, 24, 6, 6, 9 + 11 * 3, True)
 test_time(2020, 12, 24, 6, 6, 9 + 11 * 4, True)
+test_end()
+
+
+test_start('remove')
+test_remove()
 test_end()
